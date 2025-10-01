@@ -1,4 +1,3 @@
-
 services:
   - type: worker
     name: ai-productivity-bot
@@ -7,9 +6,10 @@ services:
     plan: starter
     buildCommand: pip install -r requirements.txt
     startCommand: python bot.py
+
     envVars:
       - key: BOT_TOKEN
-        sync: false
+        sync: false                # enter in dashboard on first deploy
       - key: TZ
         value: America/Los_Angeles
       - key: DB_PATH
@@ -26,6 +26,7 @@ services:
         value: "09:00"
       - key: WORK_END
         value: "18:00"
+      # Google Calendar (optional)
       - key: GOOGLE_CLIENT_ID
         sync: false
       - key: GOOGLE_CLIENT_SECRET
@@ -34,7 +35,8 @@ services:
         sync: false
       - key: GOOGLE_CALENDAR_ID
         value: primary
-    disks:
-      - name: botdata
-        mountPath: /app/data
-        sizeGB: 1
+
+    disk:
+      name: botdata
+      mountPath: /app/data
+      sizeGB: 1
