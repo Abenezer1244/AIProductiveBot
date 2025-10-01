@@ -1,0 +1,40 @@
+
+services:
+  - type: worker
+    name: ai-productivity-bot
+    runtime: python
+    region: oregon
+    plan: starter
+    buildCommand: pip install -r requirements.txt
+    startCommand: python bot.py
+    envVars:
+      - key: BOT_TOKEN
+        sync: false
+      - key: TZ
+        value: America/Los_Angeles
+      - key: DB_PATH
+        value: /app/data/data.db
+      - key: MORNING_REMINDER_HOUR
+        value: "9"
+      - key: EVENING_REMINDER_HOUR
+        value: "21"
+      - key: CALENDAR_AUTOSCHEDULE
+        value: "1"
+      - key: MIT_BLOCK_MIN
+        value: "60"
+      - key: WORK_START
+        value: "09:00"
+      - key: WORK_END
+        value: "18:00"
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_REFRESH_TOKEN
+        sync: false
+      - key: GOOGLE_CALENDAR_ID
+        value: primary
+    disks:
+      - name: botdata
+        mountPath: /app/data
+        sizeGB: 1
