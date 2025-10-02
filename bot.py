@@ -1,4 +1,5 @@
 from __future__ import annotations
+from multiprocessing import context
 import os, logging
 from datetime import time
 import pytz
@@ -18,10 +19,15 @@ PLAN_MIT1, PLAN_MIT2, PLAN_MIT3 = range(3); REFLECT_WELL, REFLECT_IMPROVE, REFLE
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     with get_session() as s:
-        u = ensure_user(s, user_id); schedule_daily_jobs(context.application, update.effective_chat.id, u.tz or DEFAULT_TZ, u.morning_hour, u.evening_hour)
+        u = ensure_user(s, user_id); schedule_daily_jobs(context.job_queue, update.effective_chat.id, u.tz or DEFAULT_TZ, u.morning_hour, u.evening_hour)
+
     await update.message.reply_text("👋 Welcome! Try: /plan, /focus, /weekly, /summary, /reflect", parse_mode=ParseMode.MARKDOWN)
 async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Commands: /plan /tasks /done <id> /focus <work> <break> /starttask /stoptask /summary /weekly /reflect /calendar <id> <HH:MM> <dur> /setreminders <h> <h> /export /wipe", parse_mode=ParseMode.MARKDOWN)
+
+
+
+
 async def plan_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Let's plan your day. What's **MIT #1**?"); context.user_data["mits"] = []; return PLAN_MIT1
 async def plan_mit1(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -100,7 +106,8 @@ async def setreminders_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(context.args) < 2: await update.message.reply_text("Usage: /setreminders <morning_hour> <evening_hour>"); return
     morning = int(context.args[0]); evening = int(context.args[1]); user_id = update.effective_user.id
     with get_session() as s: u = set_reminders(s, user_id, morning, evening)
-    schedule_daily_jobs(context.application, update.effective_chat.id, u.tz or DEFAULT_TZ, morning, evening); await update.message.reply_text(f"⏰ Reminders: {morning}:00 and {evening}:00")
+    schedule_daily_jobs(context.job_queue, update.effective_chat.id, u.tz or DEFAULT_TZ, morning, evening)
+
 async def morning_ping(context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(context.job.chat_id, "☀️ Good morning! What are your 3 MITs? Use /plan.")
 async def evening_ping(context: ContextTypes.DEFAULT_TYPE):
@@ -114,13 +121,36 @@ async def nightly_streak_job(context: ContextTypes.DEFAULT_TYPE):
     txt = f"🔥 Streak: {streak} day(s) {'(goal met ✅)' if met else '(missed)'}."; 
     if badge: txt = badge + "\n" + txt
     await context.bot.send_message(chat_id, txt)
-def schedule_daily_jobs(app, chat_id: int, tz_name: str, morning_hour: int, evening_hour: int):
-    tz = pytz.timezone(tz_name); from datetime import time as dtime
+def schedule_daily_jobs(job_queue, chat_id: int, tz_name: str, morning_hour: int, evening_hour: int):
+    tz = pytz.timezone(tz_name)
+    from datetime import time as dtime
+
+    # clear existing jobs for this chat
     for name in [f"morning-{chat_id}", f"evening-{chat_id}", f"streak-{chat_id}"]:
-        for j in app.job_queue.get_jobs_by_name(name): j.schedule_removal()
-    app.job_queue.run_daily(morning_ping, time=dtime(hour=morning_hour, minute=0, tzinfo=tz), chat_id=chat_id, name=f"morning-{chat_id}")
-    app.job_queue.run_daily(evening_ping, time=dtime(hour=evening_hour, minute=0, tzinfo=tz), chat_id=chat_id, name=f"evening-{chat_id}")
-    app.job_queue.run_daily(nightly_streak_job, time=dtime(hour=23, minute=59, tzinfo=tz), chat_id=chat_id, name=f"streak-{chat_id}", data={"user_id": chat_id})
+        for j in job_queue.get_jobs_by_name(name):
+            j.schedule_removal()
+
+    # (re)schedule
+    job_queue.run_daily(
+        morning_ping,
+        time=dtime(hour=morning_hour, minute=0, tzinfo=tz),
+        chat_id=chat_id,
+        name=f"morning-{chat_id}",
+    )
+    job_queue.run_daily(
+        evening_ping,
+        time=dtime(hour=evening_hour, minute=0, tzinfo=tz),
+        chat_id=chat_id,
+        name=f"evening-{chat_id}",
+    )
+    job_queue.run_daily(
+        nightly_streak_job,
+        time=dtime(hour=23, minute=59, tzinfo=tz),
+        chat_id=chat_id,
+        name=f"streak-{chat_id}",
+        data={"user_id": chat_id},
+    )
+
 async def calendar_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(context.args) < 3: await update.message.reply_text("Usage: /calendar <task_id> <HH:MM> <duration_min>"); return
     try: tid = int(context.args[0]); hhmm = context.args[1]; dur = int(context.args[2])
